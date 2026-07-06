@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>무역창고 QR 재고관리</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <script>window.INITIAL_QR = __INITIAL_QR__;</script>
+  <div id="loginOverlay" class="login-overlay">
+    <form id="loginForm" class="login-card">
+      <p class="eyebrow">ADMIN LOGIN</p>
+      <h2>관리자 PIN 입력</h2>
+      <p class="hint">전체 재고판, 수량 수정, QR 라벨 출력은 관리자만 사용할 수 있습니다. QR 조회 화면은 자재 1개만 공개됩니다.</p>
+      <input id="adminPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="관리자 PIN">
+      <button class="btn wide" type="submit">로그인</button>
+      <p class="hint small">처음 테스트용 기본 PIN은 1204입니다. Railway에 올릴 때 ADMIN_PIN으로 꼭 변경하세요.</p>
+    </form>
+  </div>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">FORESCHOOL WAREHOUSE</p>
+      <h1>QR 재고관리</h1>
+      <p class="subtitle">무역창고와 한국포레스쿨창고를 나눠 관리하고, 한국 인터넷판매 재고는 판매 버튼으로 바로 차감합니다.</p>
+    </div>
+    <div class="top-actions">
+      <a class="btn ghost" href="/labels" target="_blank">QR 라벨 출력</a>
+      <a class="btn ghost" href="/api/export.zip">CSV 백업 다운로드</a>
+      <button class="btn" id="backupBtn">DB 백업</button>
+      <button class="btn ghost" id="logoutBtn">로그아웃</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <nav id="warehouseTabs" class="tabs"></nav>
+    <p class="page-title">현재 페이지: <b id="currentWarehouseLabel">전체 창고</b></p>
+
+    <section class="dashboard">
+      <article class="card stat"><span>등록 자재</span><strong id="statTotal">0</strong></article>
+      <article class="card stat"><span>보관 위치</span><strong id="statLocation">0</strong></article>
+      <article class="card stat warn"><span>재고 0</span><strong id="statZero">0</strong></article>
+      <article class="card stat danger"><span>100개 미만</span><strong id="statBelow">0</strong></article>
+      <article class="card connection">
+        <span>창고 휴대폰 접속 주소</span>
+        <div id="serverUrls">불러오는 중...</div>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="card scanner-card">
+        <div class="card-head"><div><p class="eyebrow">QR SCAN</p><h2>QR로 바로 찾기</h2></div><span class="pill" id="scanStatus">대기중</span></div>
+        <div class="scan-row"><input id="qrInput" placeholder="QR코드 입력 또는 스캐너로 찍기 예: FSW-1234ABCD"><button class="btn" id="lookupBtn">조회</button></div>
+        <div class="scan-row"><button class="btn secondary" id="cameraBtn">카메라 스캔 시작</button><button class="btn ghost" id="stopCameraBtn">중지</button></div>
+        <video id="scanVideo" playsinline muted></video>
+        <p class="hint">휴대폰 카메라로 QR 라벨을 찍으면 해당 자재 조회 화면이 바로 열립니다.</p>
+        <div id="scannedItem" class="selected-box empty">아직 선택된 자재가 없습니다.</div>
+      </article>
+
+      <article class="card movement-card">
+        <div class="card-head"><div><p class="eyebrow">QUICK STOCK</p><h2>빠른 입고 / 판매 / 사용 / 실사수정</h2></div></div>
+        <form id="movementForm" class="form-grid compact">
+          <label>선택 자재<select id="moveItem" required></select></label>
+          <label>처리구분<select id="moveAction"><option value="SALE">판매 -</option><option value="OUT">사용/출고 -</option><option value="IN">입고 +</option><option value="SET">실사수정 =</option></select></label>
+          <label>수량<input id="moveQty" type="number" step="0.01" min="0" required></label>
+          <label>담당자<input id="moveWorker" placeholder="예: 이승현"></label>
+          <label>사유<input id="moveReason" placeholder="예: 인터넷판매 / 샘플 제작 / 실사"></label>
+          <label>참조번호<input id="moveRef" placeholder="예: 주문번호, 발주서"></label>
+          <label class="wide">메모<input id="moveMemo" placeholder="필요한 내용 기록"></label>
+          <button class="btn wide" type="submit">재고 반영</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="grid main-grid">
+      <article class="card inventory-card">
+        <div class="card-head sticky-head">
+          <div><p class="eyebrow">INVENTORY BOARD</p><h2>자재 재고판</h2></div>
+          <div class="filters">
+            <input id="keyword" placeholder="자재명, QR, 규격, 거래처 검색">
+            <select id="categoryFilter"><option value="">전체 분류</option></select>
+            <input id="locationFilter" placeholder="위치 예: A-01">
+            <label class="check"><input type="checkbox" id="zeroOnly"> 재고0만</label>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="itemsTable"><thead><tr><th>상태</th><th>창고</th><th>자재명</th><th>현재수량</th><th>위치</th><th>분류</th><th>규격</th><th>QR</th><th>관리</th></tr></thead><tbody></tbody></table></div>
+      </article>
+
+      <aside class="card edit-card">
+        <div class="card-head"><div><p class="eyebrow">ITEM</p><h2 id="formTitle">자재 등록</h2></div><button class="btn ghost" id="newItemBtn">새 자재</button></div>
+        <form id="itemForm" class="form-grid">
+          <input type="hidden" id="itemId">
+          <div class="wide photo-admin-box"><div id="itemPhotoPreview" class="photo-preview empty">대표 사진 없음</div><label class="photo-upload-label">대표 사진 1장<input id="itemPhoto" type="file" accept="image/*"></label><p class="hint">사진을 올리면 QR 조회 화면에 사진이 함께 보입니다.</p></div>
+          <label class="wide">창고<select id="itemWarehouse"><option>한국포레스쿨창고</option><option>무역창고</option></select></label>
+          <label class="wide">자재명 *<input id="itemName" required placeholder="예: OPP 봉투 10x15cm"></label>
+          <label>분류<input id="itemCategory" list="categoryList" placeholder="포장재 / 박스 / 스티커 / 부품"><datalist id="categoryList"></datalist></label>
+          <label>보관위치<input id="itemLocation" list="locationList" placeholder="예: A-01-상단"><datalist id="locationList"></datalist></label>
+          <label class="wide">규격<input id="itemSpec" placeholder="사이즈, 색상, 재질, 포장단위 등"></label>
+          <label>현재수량<input id="itemStock" type="number" step="0.01" value="0"></label>
+          <label>단위<input id="itemUnit" value="개" placeholder="개/장/박스/롤/kg"></label>
+          <label>묶음수량<input id="itemPack" type="number" step="0.01" value="1" placeholder="1박스당 수량"></label>
+          <label class="wide">거래처/공장<input id="itemSupplier" list="supplierList" placeholder="1688 업체명, 공장명, 담당자 등"><datalist id="supplierList"></datalist></label>
+          <label>QR 코드<input id="itemQr" placeholder="비워두면 자동 생성"></label><button class="btn ghost" type="button" id="generateQrBtn">QR 새로 발급</button>
+          <label>상태<select id="itemStatus"><option>사용중</option><option>보류</option><option>단종</option><option>숨김</option></select></label>
+          <label class="check alert-check"><input type="checkbox" id="itemLowAlert" checked> 한국창고 100개 미만 알림</label>
+          <label class="wide">메모<textarea id="itemMemo" rows="3" placeholder="통관/발주/주의사항/대체품 등"></textarea></label>
+          <button class="btn wide" type="submit">저장</button><button class="btn danger wide" type="button" id="deleteItemBtn">완전 삭제</button><button class="btn ghost wide" type="button" id="hideItemBtn">숨김 처리</button>
+        </form>
+      </aside>
+    </section>
+
+    <section class="grid two bottom-grid">
+      <article class="card"><div class="card-head"><div><p class="eyebrow">KOREA LOW STOCK</p><h2>한국포레스쿨창고 100개 미만</h2></div><span id="alertStatus" class="pill warn">확인중</span></div><div id="lowKoreaBoard" class="list"></div><div class="alert-actions"><button class="btn ghost" id="testAlertBtn">알림 테스트</button><p class="hint">카카오워크/웹훅 URL이 설정되어 있으면 판매 후 100개 미만일 때 알림을 보냅니다.</p></div></article>
+      <article class="card"><div class="card-head"><div><p class="eyebrow">LOCATION</p><h2>위치별 현황</h2></div></div><div id="locationBoard" class="list"></div></article>
+    </section>
+    <section class="grid two bottom-grid">
+      <article class="card"><div class="card-head"><div><p class="eyebrow">ALERT HISTORY</p><h2>알림 기록</h2></div></div><div id="notificationBoard" class="list"></div></article>
+      <article class="card"><div class="card-head"><div><p class="eyebrow">HISTORY</p><h2>최근 입출고 기록</h2></div></div><div class="table-wrap small"><table id="movementTable"><thead><tr><th>시간</th><th>자재</th><th>처리</th><th>수량</th><th>변경</th><th>사유</th></tr></thead><tbody></tbody></table></div></article>
+    </section>
+  </main>
+  <div id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
